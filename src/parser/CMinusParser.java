@@ -424,10 +424,14 @@ public class CMinusParser implements Parser {
 
         ArrayList < Decl > declList = new ArrayList < Decl > ();
 
-        // check if next token is in first set
+        // Parse the first decl
+        Decl nextDecl = parseDecl();
+        declList.add(nextDecl);
+
+        // Loop through any other decls
         while (checkToken(TokenType.INT_TOKEN) 
-        || checkToken(TokenType.VOID_TOKEN)) {
-            Decl nextDecl = parseDecl();
+            || checkToken(TokenType.VOID_TOKEN)){
+            nextDecl = parseDecl();
             declList.add(nextDecl);
         }
 
