@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
+import lowlevel.CodeItem;
+import lowlevel.Data;
 import scanner.CMinusScanner;
 import scanner.Token;
 import scanner.Token.TokenType;
@@ -125,6 +127,13 @@ public class CMinusParser implements Parser {
 
         public Program(ArrayList<Decl> decls) {
             this.decls = decls;
+        }
+
+        // Filler code just to let the program compile
+        public CodeItem genLLCode(){
+            Data returnItem = new Data();
+
+            return returnItem;
         }
 
         void print() throws IOException {

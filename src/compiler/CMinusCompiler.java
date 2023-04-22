@@ -10,6 +10,7 @@ import optimizer.*;
 import x86codegen.*;
 import x64codegen.*;
 import dataflow.*;
+import java.lang.Exception;
 
 public class CMinusCompiler implements Compiler {
 
@@ -119,7 +120,8 @@ public class CMinusCompiler implements Compiler {
                 outFile.close();
             }
 
-        } catch (IOException ioe) {
+            // This originally caught an IOException, but Exception is more generic
+        } catch (Exception ioe) {
         }
 
     }
