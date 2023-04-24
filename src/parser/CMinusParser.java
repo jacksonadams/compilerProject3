@@ -9,8 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-import lowlevel.CodeItem;
-import lowlevel.Data;
+import lowlevel.*;
 import scanner.CMinusScanner;
 import scanner.Token;
 import scanner.Token.TokenType;
@@ -84,6 +83,7 @@ public class CMinusParser implements Parser {
     public HashMap < TokenType, String > ops = new HashMap < TokenType, String > ();
     public String INDENT = "    ";
     public FileWriter outputFile;
+    HashMap<String, String> symbolTable;
 
     public CMinusParser(String fileName) throws Exception {
         File inputFile = new File(fileName);
@@ -131,9 +131,24 @@ public class CMinusParser implements Parser {
 
         // Filler code just to let the program compile
         public CodeItem genLLCode(){
-            Data returnItem = new Data();
+            CodeItem headItem = null;
 
-            return returnItem;
+            // Loop through our array list of decls and categorize
+            // them into Data (var_decl) or functions (fun_decl)
+            if(decls.size() > 0){
+                // Get the first decl
+                headItem = decls.get(0).genLLCode();
+                CodeItem lastDecl = headItem;
+                
+                // Get the remaining decls
+                for(int i = 1; i < decls.size(); i++){
+                    CodeItem nextItem = decls.get(i).genLLCode();
+                    lastDecl.setNextItem(nextItem);
+                    lastDecl = nextItem;
+                }
+            }
+
+            return headItem;
         }
 
         void print() throws IOException {
@@ -162,6 +177,7 @@ public class CMinusParser implements Parser {
 
     abstract class Decl {
         // abstract, will be one of the other two decls
+        abstract CodeItem genLLCode();
         abstract void print(String parentSpace) throws IOException;
     }
 
@@ -171,6 +187,12 @@ public class CMinusParser implements Parser {
 
         public VarDecl(VarExpression name) {
             this.name = name;
+        }
+
+        public CodeItem genLLCode(){
+            Data data = new Data(Data.TYPE_INT, name.var);
+            
+            return data;
         }
 
         void print(String parentSpace) throws IOException {
@@ -192,6 +214,32 @@ public class CMinusParser implements Parser {
             this.name = name;
             this.params = params;
             this.content = content;
+        }
+
+        public CodeItem genLLCode(){
+            FuncParam firstParam = null;
+
+            // Get the first parameter
+            if(params.size() > 0){
+                Param param = params.get(0);
+                firstParam = new FuncParam(Data.TYPE_INT, param.name.var);
+                FuncParam lastParam = firstParam;
+
+                // Get any remaining parameters
+                for(int i = 1; i < params.size(); i++){
+                    param = params.get(i);
+                    FuncParam nextParam = new FuncParam(Data.TYPE_INT, param.name.var);
+                    lastParam.setNextParam(nextParam);
+                    lastParam = nextParam;
+                }
+            }
+
+            // Get the first function
+            int type = (returnType == "void") ? Data.TYPE_VOID : Data.TYPE_INT;
+            Function func = new Function(type, name.var, firstParam);
+            func.getTable();
+
+            return func;
         }
 
         void print(String parentSpace) throws IOException {
