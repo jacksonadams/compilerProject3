@@ -91,7 +91,7 @@ public class CMinusParser implements Parser {
         BufferedReader inputReader = new BufferedReader(codeFile);
         scanner = new CMinusScanner(inputReader);
 
-        program = parse();
+        // program = parse();
 
         // Add keys and values (TokenType, Character)
         ops.put(TokenType.PLUS_TOKEN, "+");
@@ -237,7 +237,10 @@ public class CMinusParser implements Parser {
             // Get the first function
             int type = (returnType == "void") ? Data.TYPE_VOID : Data.TYPE_INT;
             Function func = new Function(type, name.var, firstParam);
-            func.getTable();
+            func.setTable(symbolTable);
+
+            Operation headOp = this.content.genLLCode();
+
 
             return func;
         }
@@ -295,6 +298,14 @@ public class CMinusParser implements Parser {
                 statements.get(i).print(mySpace);
             }
             outputFile.write(mySpace + "}\n");
+        }
+
+        public Operation genLLCode(){
+            Operation headItem = null;
+
+            
+
+            return headItem;
         }
     }
 

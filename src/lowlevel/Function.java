@@ -187,6 +187,10 @@ public class Function extends CodeItem {
     return symbolTable;
   }
 
+  public void setTable(HashMap<String, String> table){
+    symbolTable = table;
+  }
+
   public boolean getOptimize() {
     return optimize;
   }

@@ -30,11 +30,12 @@ public class CMinusCompiler implements Compiler {
     public void compile(String filePrefix) {
 
         String fileName = filePrefix + ".c";
+
         try {
             Parser myParser = new CMinusParser(fileName);
 
             Program parseTree = myParser.parse();
-            myParser.printAST(parseTree);
+            //myParser.printAST(parseTree);
 
             CodeItem lowLevelCode = parseTree.genLLCode();
 
@@ -127,7 +128,7 @@ public class CMinusCompiler implements Compiler {
     }
 
     public static void main(String[] args) {
-        String filePrefix = "test5";
+        String filePrefix = "src/parser/input";
         CMinusCompiler myCompiler = new CMinusCompiler();
         myCompiler.setGenX64Code(true);
         myCompiler.compile(filePrefix);
