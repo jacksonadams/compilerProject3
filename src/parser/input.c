@@ -1,7 +1,5 @@
-int x;
-int y;
-int z;
+int addThem() {
+    int x;
 
-int addThem(int x) {
-
+    x = 3;
 }

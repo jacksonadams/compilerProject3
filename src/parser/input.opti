@@ -1,5 +1,6 @@
-(DATA  x)
-(DATA  y)
-(DATA  z)
-(FUNCTION  addThem  [(int x)]
+(FUNCTION  addThem  []
+  (BB 2
+    (OPER 3 Func_Entry []  [])
+    (OPER 4 Mov []  [])
+  )
 )

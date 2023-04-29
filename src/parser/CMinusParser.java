@@ -83,7 +83,7 @@ public class CMinusParser implements Parser {
     public HashMap < TokenType, String > ops = new HashMap < TokenType, String > ();
     public String INDENT = "    ";
     public FileWriter outputFile;
-    HashMap<String, String> symbolTable;
+    public HashMap<String, Integer> symbolTable = new HashMap<String, Integer>();
 
     public CMinusParser(String fileName) throws Exception {
         File inputFile = new File(fileName);
@@ -130,19 +130,34 @@ public class CMinusParser implements Parser {
         }
 
         // Filler code just to let the program compile
-        public CodeItem genLLCode(){
+        public CodeItem genLLCode() throws Exception {
             CodeItem headItem = null;
 
             // Loop through our array list of decls and categorize
             // them into Data (var_decl) or functions (fun_decl)
             if(decls.size() > 0){
                 // Get the first decl
-                headItem = decls.get(0).genLLCode();
+                Decl firstDecl = decls.get(0);
+
+                headItem = firstDecl.genLLCode();
                 CodeItem lastDecl = headItem;
+
+                if(firstDecl instanceof VarDecl){
+                    VarDecl firstVar = (VarDecl) firstDecl;
+                    symbolTable.put(firstVar.name.var, symbolTable.size());
+                }
                 
                 // Get the remaining decls
                 for(int i = 1; i < decls.size(); i++){
-                    CodeItem nextItem = decls.get(i).genLLCode();
+                    Decl curDecl = decls.get(i);
+
+                    // Check if it's a global variable then add it in the symbol table
+                    if(decls.get(i) instanceof VarDecl){
+                        VarDecl curVar = (VarDecl)curDecl;
+                        symbolTable.put(curVar.name.var, symbolTable.size());
+                    }
+
+                    CodeItem nextItem = curDecl.genLLCode();
                     lastDecl.setNextItem(nextItem);
                     lastDecl = nextItem;
                 }
@@ -177,7 +192,7 @@ public class CMinusParser implements Parser {
 
     abstract class Decl {
         // abstract, will be one of the other two decls
-        abstract CodeItem genLLCode();
+        abstract CodeItem genLLCode() throws Exception;
         abstract void print(String parentSpace) throws IOException;
     }
 
@@ -192,6 +207,7 @@ public class CMinusParser implements Parser {
         public CodeItem genLLCode(){
             Data data = new Data(Data.TYPE_INT, name.var);
             
+
             return data;
         }
 
@@ -216,11 +232,11 @@ public class CMinusParser implements Parser {
             this.content = content;
         }
 
-        public CodeItem genLLCode(){
+        public CodeItem genLLCode() throws Exception {
             FuncParam firstParam = null;
 
             // Get the first parameter
-            if(params.size() > 0){
+            if(params != null){
                 Param param = params.get(0);
                 firstParam = new FuncParam(Data.TYPE_INT, param.name.var);
                 FuncParam lastParam = firstParam;
@@ -237,10 +253,19 @@ public class CMinusParser implements Parser {
             // Get the first function
             int type = (returnType == "void") ? Data.TYPE_VOID : Data.TYPE_INT;
             Function func = new Function(type, name.var, firstParam);
-            func.setTable(symbolTable);
+            //func.setTable(symbolTable);
 
-            Operation headOp = this.content.genLLCode();
+            if(params != null){
+                HashMap<String, Integer> localTable = func.getTable();
+                for(int i = 0; i < params.size(); i ++){
+                    localTable.put(params.get(i).name.var, localTable.size());
+                }
+            }
 
+            func.createBlock0();
+            func.setCurrBlock(func.getFirstBlock());
+
+            this.content.genLLCode(func);
 
             return func;
         }
@@ -263,6 +288,7 @@ public class CMinusParser implements Parser {
     abstract class Statement {
         // abstract, will be one of the other 5 statements
         abstract void print(String parentSpace) throws IOException;
+        abstract void genLLCode(Function func) throws Exception;
     }
 
     public class ExpressionStmt extends Statement {
@@ -271,6 +297,10 @@ public class CMinusParser implements Parser {
         public Expression statement;
         public ExpressionStmt(Expression statement) {
             this.statement = statement;
+        }
+
+        public void genLLCode(Function func) throws Exception {
+            this.statement.genLLCode(func);
         }
 
         void print(String parentSpace) throws IOException {
@@ -300,12 +330,17 @@ public class CMinusParser implements Parser {
             outputFile.write(mySpace + "}\n");
         }
 
-        public Operation genLLCode(){
-            Operation headItem = null;
+        public void genLLCode(Function func) throws Exception {
+            // Get local decls and put them in local symbol table
+            HashMap<String, Integer> localTable = func.getTable();
+            for(int i = 0; i < localDecls.size(); i++){
+                VarDecl curDecl = (VarDecl) localDecls.get(i);
+                localTable.put(curDecl.name.var, localTable.size());
+            }
 
-            
-
-            return headItem;
+            for(int i = 0; i < statements.size(); i++){
+                statements.get(i).genLLCode(func);
+            }
         }
     }
 
@@ -323,6 +358,10 @@ public class CMinusParser implements Parser {
         public SelectionStmt(Expression condition, Statement ifSequence) {
             this.condition = condition;
             this.ifSequence = ifSequence;
+        }
+
+        public void genLLCode(Function func) throws Exception{
+            this.ifSequence.genLLCode(func);
         }
 
         void print(String parentSpace) throws IOException {
@@ -347,6 +386,10 @@ public class CMinusParser implements Parser {
             this.sequence = sequence;
         }
 
+        public void genLLCode(Function func){
+
+        }
+
         void print(String parentSpace) throws IOException {
             String mySpace = INDENT + parentSpace;
             outputFile.write(mySpace + "while\n");
@@ -366,6 +409,10 @@ public class CMinusParser implements Parser {
             this.LHS = LHS;
         }
 
+        public void genLLCode(Function func){
+            
+        }
+
         void print(String parentSpace) throws IOException {
             String mySpace = INDENT + parentSpace;
             outputFile.write(mySpace + "return\n");
@@ -378,6 +425,7 @@ public class CMinusParser implements Parser {
     abstract class Expression {
         // abstract expression, will be one of the other 5
         abstract void print(String parentSpace) throws IOException;
+        abstract void genLLCode(Function func) throws Exception;
     }
 
     public class AssignExpression extends Expression {
@@ -389,6 +437,17 @@ public class CMinusParser implements Parser {
         public AssignExpression(VarExpression LHS, Expression RHS) {
             this.LHS = LHS;
             this.RHS = RHS;
+        }
+
+        public void genLLCode(Function func) throws Exception{
+            this.LHS.genLLCode(func);
+            // <- add something here?
+            this.RHS.genLLCode(func);
+
+            // Add assign operation
+            BasicBlock currBlock = func.getCurrBlock();
+            Operation assignOper = new Operation(Operation.OperationType.ASSIGN, currBlock);
+            currBlock.appendOper(assignOper);
         }
 
         void print(String parentSpace) throws IOException {
@@ -411,6 +470,48 @@ public class CMinusParser implements Parser {
             this.RHS = RHS;
         }
 
+        public void genLLCode(Function func) throws Exception {
+            this.LHS.genLLCode(func);
+            // ADD: Get location of where children stored their results
+            this.RHS.genLLCode(func);
+
+            Operation newOper = null;
+            BasicBlock currBlock = func.getCurrBlock();
+            switch(this.op){
+                case PLUS_TOKEN:
+                    newOper = new Operation(Operation.OperationType.ADD_I, currBlock);
+                    break;
+                case MINUS_TOKEN:
+                    newOper = new Operation(Operation.OperationType.SUB_I, currBlock);
+                    break;
+                case MULT_TOKEN:
+                    newOper = new Operation(Operation.OperationType.MUL_I, currBlock);
+                    break;
+                case DIVIDE_TOKEN:
+                    newOper = new Operation(Operation.OperationType.DIV_I, currBlock);
+                    break;
+                case LESS_TOKEN:
+                    newOper = new Operation(Operation.OperationType.LT, currBlock);
+                    break;
+                case LESS_EQUAL_TOKEN:
+                    newOper = new Operation(Operation.OperationType.LTE, currBlock);
+                    break;
+                case GREATER_TOKEN:
+                    newOper = new Operation(Operation.OperationType.GT, currBlock);
+                    break;
+                case GREATER_EQUAL_TOKEN:
+                    newOper = new Operation(Operation.OperationType.GTE, currBlock);
+                    break;
+                case EQUAL_TOKEN:
+                    newOper = new Operation(Operation.OperationType.EQUAL, currBlock);
+                    break;
+                case NOT_EQUAL_TOKEN:
+                    newOper = new Operation(Operation.OperationType.NOT_EQUAL, currBlock);
+                    break;
+            }
+            currBlock.appendOper(newOper);
+        }
+
         void print(String parentSpace) throws IOException {
             String mySpace = parentSpace + INDENT;
             outputFile.write(mySpace + ops.get(this.op) + "\n");
@@ -429,6 +530,10 @@ public class CMinusParser implements Parser {
             this.args = args;
         }
 
+        public void genLLCode(Function func){
+            
+        }
+
         void print(String parentSpace) throws IOException {
             String mySpace = INDENT + parentSpace;
             this.LHS.print(parentSpace);
@@ -445,6 +550,12 @@ public class CMinusParser implements Parser {
         int num;
         public NumExpression(int num) {
             this.num = num;
+        }
+
+        public void genLLCode(Function func){
+            // note - duplicate numbers may cause problems
+            HashMap<String, Integer> localTable = func.getTable();
+            localTable.put(num + "", localTable.size());
         }
 
         void print(String parentSpace) throws IOException {
@@ -468,6 +579,28 @@ public class CMinusParser implements Parser {
         public VarExpression(String var, Boolean blankArray) {
             this.var = var;
             this.blankArray = blankArray;
+        }
+
+        public void genLLCode(Function func) throws Exception{
+
+            HashMap<String, Integer> localTable = func.getTable();
+            BasicBlock currentBlock = func.getCurrBlock();
+            int register = -1;
+
+            // check for global variables
+            if(localTable.containsKey(var)){
+                register = localTable.get(var);
+                // EDIT: maybe add more here
+            } else {
+                register = symbolTable.get(var);
+                Operation loadOp = new Operation(Operation.OperationType.LOAD_I, currentBlock);
+                currentBlock.appendOper(loadOp);
+            }
+
+            // throw error if variable doesn't exist
+            if(register == -1){
+                throw new Exception("Variable " + this.var + " doesn't exist.");
+            }
         }
 
         void print(String parentSpace) throws IOException {
@@ -627,6 +760,9 @@ public class CMinusParser implements Parser {
         else if (checkToken(TokenType.VOID_TOKEN)) {
             matchToken(TokenType.VOID_TOKEN);
         } 
+        else if(checkToken(TokenType.RIGHT_PAREN_TOKEN)){
+            // Do nothing
+        }
         else {
             throw new Exception("Error: parseParams expects int or void");
         }
