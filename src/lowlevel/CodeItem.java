@@ -2,6 +2,8 @@ package lowlevel;
 
 import java.io.*;
 
+import parser.CodeGenerationException;
+
 /**
  * This abstract class is the top-level class in the low-level code heirarchy.
  *
@@ -31,5 +33,5 @@ public abstract class CodeItem {
     nextItem = next;
   }
     // abstract method to support polymorphism during printing
-  public void printLLCode(PrintWriter outFile) { }
+  public void printLLCode(PrintWriter outFile) throws CodeGenerationException { }
 }

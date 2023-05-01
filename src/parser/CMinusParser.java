@@ -258,7 +258,7 @@ public class CMinusParser implements Parser {
             if(params != null){
                 HashMap<String, Integer> localTable = func.getTable();
                 for(int i = 0; i < params.size(); i ++){
-                    localTable.put(params.get(i).name.var, localTable.size());
+                    localTable.put(params.get(i).name.var, func.getNewRegNum());
                 }
             }
 
@@ -335,7 +335,7 @@ public class CMinusParser implements Parser {
             HashMap<String, Integer> localTable = func.getTable();
             for(int i = 0; i < localDecls.size(); i++){
                 VarDecl curDecl = (VarDecl) localDecls.get(i);
-                localTable.put(curDecl.name.var, localTable.size());
+                localTable.put(curDecl.name.var, func.getNewRegNum());
             }
 
             for(int i = 0; i < statements.size(); i++){
@@ -361,7 +361,11 @@ public class CMinusParser implements Parser {
         }
 
         public void genLLCode(Function func) throws Exception{
+            this.condition.genLLCode(func);
             this.ifSequence.genLLCode(func);
+            if(this.elseSequence != null){
+                this.elseSequence.genLLCode(func);
+            }
         }
 
         void print(String parentSpace) throws IOException {
@@ -426,6 +430,16 @@ public class CMinusParser implements Parser {
         // abstract expression, will be one of the other 5
         abstract void print(String parentSpace) throws IOException;
         abstract void genLLCode(Function func) throws Exception;
+
+        // every expression should have a regnum field
+        private int regNum;
+
+        void setRegNum(int num){
+            regNum = num;
+        }
+        int getRegNum(){
+            return regNum;
+        }
     }
 
     public class AssignExpression extends Expression {
@@ -440,6 +454,11 @@ public class CMinusParser implements Parser {
         }
 
         public void genLLCode(Function func) throws Exception{
+            // if local, make assign oper, lhs.reg = rhs.reg (move)
+            // annotate with lhs.reg
+            // if global, if a = R3, store R3 (source 0) into a (source 1)
+            // annotate with R3
+            // COME BACK TO THIS bc it's basically just turning the LHS into a pointer
             this.LHS.genLLCode(func);
             // <- add something here?
             this.RHS.genLLCode(func);
@@ -447,7 +466,12 @@ public class CMinusParser implements Parser {
             // Add assign operation
             BasicBlock currBlock = func.getCurrBlock();
             Operation assignOper = new Operation(Operation.OperationType.ASSIGN, currBlock);
+            assignOper.setDestOperand(0, new Operand(Operand.OperandType.REGISTER, this.LHS.getRegNum()));
+            assignOper.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, this.RHS.getRegNum()));
             currBlock.appendOper(assignOper);
+
+            //this.LHS.setRegNum(this.RHS.getRegNum());
+            setRegNum(LHS.getRegNum());
         }
 
         void print(String parentSpace) throws IOException {
@@ -471,9 +495,12 @@ public class CMinusParser implements Parser {
         }
 
         public void genLLCode(Function func) throws Exception {
+            // rNew = a + b
+            // 
             this.LHS.genLLCode(func);
-            // ADD: Get location of where children stored their results
             this.RHS.genLLCode(func);
+
+            this.setRegNum(func.getNewRegNum());
 
             Operation newOper = null;
             BasicBlock currBlock = func.getCurrBlock();
@@ -508,8 +535,15 @@ public class CMinusParser implements Parser {
                 case NOT_EQUAL_TOKEN:
                     newOper = new Operation(Operation.OperationType.NOT_EQUAL, currBlock);
                     break;
+                default:
+                    break;
             }
+            newOper.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, this.LHS.getRegNum()));
+            newOper.setSrcOperand(1, new Operand(Operand.OperandType.REGISTER, this.RHS.getRegNum()));
+            newOper.setDestOperand(0, new Operand(Operand.OperandType.REGISTER, this.getRegNum()));
             currBlock.appendOper(newOper);
+
+
         }
 
         void print(String parentSpace) throws IOException {
@@ -531,7 +565,9 @@ public class CMinusParser implements Parser {
         }
 
         public void genLLCode(Function func){
-            
+            // pass, pass, rNew = retReg
+            // retReg holds return value, register number of call expression
+
         }
 
         void print(String parentSpace) throws IOException {
@@ -546,6 +582,8 @@ public class CMinusParser implements Parser {
     }
 
     public class NumExpression extends Expression {
+        // new register = 1
+        // annotate with register number
         // example: 3
         int num;
         public NumExpression(int num) {
@@ -555,7 +593,9 @@ public class CMinusParser implements Parser {
         public void genLLCode(Function func){
             // note - duplicate numbers may cause problems
             HashMap<String, Integer> localTable = func.getTable();
-            localTable.put(num + "", localTable.size());
+            int register = func.getNewRegNum();
+            localTable.put(num + "", register);
+            this.setRegNum(register);
         }
 
         void print(String parentSpace) throws IOException {
@@ -564,6 +604,9 @@ public class CMinusParser implements Parser {
     }
 
     public class VarExpression extends Expression {
+        // if in local table, annotate yourself with register number in local table
+        // if in global table, rNew = load A, annotate with rNew
+
         // example: x or x[10] or x[]
         String var;
         Expression num;
@@ -590,11 +633,12 @@ public class CMinusParser implements Parser {
             // check for global variables
             if(localTable.containsKey(var)){
                 register = localTable.get(var);
-                // EDIT: maybe add more here
+                this.setRegNum(register);
             } else {
                 register = symbolTable.get(var);
                 Operation loadOp = new Operation(Operation.OperationType.LOAD_I, currentBlock);
                 currentBlock.appendOper(loadOp);
+                this.setRegNum(register);
             }
 
             // throw error if variable doesn't exist

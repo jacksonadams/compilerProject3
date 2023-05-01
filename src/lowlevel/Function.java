@@ -3,6 +3,7 @@ package lowlevel;
 import java.util.*;
 import java.io.*;
 import dataflow.BitArraySet;
+import parser.CodeGenerationException;
 
 /**
  * This class is the primary low-level abstraction for a function
@@ -494,9 +495,10 @@ public class Function extends CodeItem {
     }
   }
 
-/***************************************************************************/
+/**
+ * @throws CodeGenerationException*************************************************************************/
     // recursive routine which prints the function information
-  public void printLLCode(PrintWriter outFile) {
+  public void printLLCode(PrintWriter outFile) throws CodeGenerationException {
     if (outFile == null) {
       System.out.print("(FUNCTION  " + getName() + "  [");
       for (FuncParam curr = firstParam; curr != null; curr = curr.getNextParam()) {
