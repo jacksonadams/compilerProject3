@@ -274,11 +274,19 @@ public class CMinusParser implements Parser {
             }
 
             func.createBlock0();
-            func.setCurrBlock(func.getFirstBlock());
+            BasicBlock block = new BasicBlock(func);
+
+            func.appendBlock(block);
+            func.setCurrBlock(block);
 
             this.content.genLLCode(func);
 
+            func.appendBlock(func.getReturnBlock());
 
+            BasicBlock ucBlock = func.getFirstUnconnectedBlock();
+            if(ucBlock != null){
+                func.appendBlock(ucBlock);
+            }
 
             return func;
         }
@@ -384,19 +392,51 @@ public class CMinusParser implements Parser {
         public void genLLCode(Function func) throws Exception{
             BasicBlock currBlock = func.getCurrBlock();
 
+            // Generate condition's LL code
             this.condition.genLLCode(func);
 
-            // Determine condition
+            // Create all blocks
+            BasicBlock ifBlock = new BasicBlock(func);
+            BasicBlock elseBlock = null;
+            if(elseSequence != null){
+                elseBlock = new BasicBlock(func);
+            }
+            BasicBlock postBlock = new BasicBlock(func);
+
+            // Create a BEQ block
+            // If the condition is false, jump to else block (if it exists) or post block
             Operation branchEqualOp = new Operation(Operation.OperationType.BEQ, currBlock);
+            /*if(this.condition instanceof BinaryExpression){
+                BinaryExpression binaryExpr = (BinaryExpression) this.condition;
+                branchEqualOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, binaryExpr.LHS.getRegNum()));
+                branchEqualOp.setSrcOperand(1, new Operand(Operand.OperandType.REGISTER, binaryExpr.RHS.getRegNum()));
+            } else {
+                branchEqualOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, this.condition.getRegNum()));
+                branchEqualOp.setSrcOperand(1, new Operand(Operand.OperandType.INTEGER, 0));
+            }*/
             branchEqualOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, this.condition.getRegNum()));
-            // branchEqualOp.setDestOperand(0, new Operand(Operand.OperandType.BLOCK, ))
+            branchEqualOp.setSrcOperand(1, new Operand(Operand.OperandType.INTEGER, 0));
+            branchEqualOp.setSrcOperand(2, new Operand(Operand.OperandType.BLOCK, elseBlock == null ? postBlock.getBlockNum() : elseBlock.getBlockNum()));
+            currBlock.appendOper(branchEqualOp);
 
-            // If the condition's register == 0, it's false so skip next block
-
-            //branchEqualOp.setSrcOperand()
-
+            func.appendToCurrentBlock(ifBlock);
+            func.setCurrBlock(ifBlock);
             this.ifSequence.genLLCode(func);
-            this.elseSequence.genLLCode(func);
+
+            if(this.elseSequence != null){
+                func.appendUnconnectedBlock(elseBlock);
+                func.setCurrBlock(elseBlock);
+                this.elseSequence.genLLCode(func);
+
+                Operation jumpOp = new Operation(Operation.OperationType.JMP, elseBlock);
+                jumpOp.setSrcOperand(0, new Operand(Operand.OperandType.BLOCK, postBlock.getBlockNum()));
+                func.getCurrBlock().appendOper(jumpOp);
+
+                func.setCurrBlock(postBlock);
+            }
+
+            func.appendToCurrentBlock(postBlock);
+            func.setCurrBlock(postBlock);
         }
 
         void print(String parentSpace) throws IOException {
@@ -421,8 +461,28 @@ public class CMinusParser implements Parser {
             this.sequence = sequence;
         }
 
-        public void genLLCode(Function func){
+        public void genLLCode(Function func) throws Exception {
+            BasicBlock conditionBlock = new BasicBlock(func);
+            BasicBlock postBlock = new BasicBlock(func);
+            func.appendToCurrentBlock(conditionBlock);
+            func.setCurrBlock(conditionBlock);
 
+            Operation branchEqualOp = new Operation(Operation.OperationType.BEQ, conditionBlock);
+            branchEqualOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, this.condition.getRegNum()));
+            branchEqualOp.setSrcOperand(1, new Operand(Operand.OperandType.INTEGER, 0));
+            branchEqualOp.setSrcOperand(2, new Operand(Operand.OperandType.BLOCK, postBlock.getBlockNum()));
+            conditionBlock.appendOper(branchEqualOp);
+
+            BasicBlock sequenceBlock = new BasicBlock(func);
+            func.appendToCurrentBlock(sequenceBlock);
+            func.setCurrBlock(sequenceBlock);
+            this.sequence.genLLCode(func);
+            Operation jumpOp = new Operation(Operation.OperationType.JMP, sequenceBlock);
+            jumpOp.setSrcOperand(0, new Operand(Operand.OperandType.BLOCK, conditionBlock.getBlockNum()));
+            sequenceBlock.appendOper(jumpOp);
+
+            func.appendToCurrentBlock(postBlock);
+            func.setCurrBlock(postBlock);
         }
 
         void print(String parentSpace) throws IOException {
@@ -449,15 +509,14 @@ public class CMinusParser implements Parser {
 
             if(LHS != null){
                 LHS.genLLCode(func);
-                Operation returnOp = new Operation(Operation.OperationType.RETURN, currBlock);
+                Operation returnOp = new Operation(Operation.OperationType.ASSIGN, currBlock);
+                returnOp.setDestOperand(0, new Operand(Operand.OperandType.MACRO, "RetReg"));
                 returnOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, LHS.getRegNum()));
-                returnOp.setDestOperand(0, new Operand(Operand.OperandType.REGISTER, this.getRegNum()));
                 currBlock.appendOper(returnOp);
             }
 
             Operation jumpOp = new Operation(Operation.OperationType.JMP, currBlock);
-            jumpOp.setSrcOperand(0, new Operand(Operand.OperandType.BLOCK, currBlock.getBlockNum()));
-            jumpOp.setDestOperand(0, new Operand(Operand.OperandType.BLOCK, func.getReturnBlock().getBlockNum()));
+            jumpOp.setSrcOperand(0, new Operand(Operand.OperandType.BLOCK, func.getReturnBlock().getBlockNum()));
             currBlock.appendOper(jumpOp);
         }
 
@@ -508,10 +567,19 @@ public class CMinusParser implements Parser {
 
             // Add assign operation
             BasicBlock currBlock = func.getCurrBlock();
-            Operation assignOper = new Operation(Operation.OperationType.ASSIGN, currBlock);
-            assignOper.setDestOperand(0, new Operand(Operand.OperandType.REGISTER, this.LHS.getRegNum()));
-            assignOper.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, this.RHS.getRegNum()));
-            currBlock.appendOper(assignOper);
+
+            // Left hand side is in local table
+            if(func.getTable().containsKey(this.LHS.var)){
+                Operation assignOp = new Operation(Operation.OperationType.ASSIGN, currBlock);
+                assignOp.setDestOperand(0, new Operand(Operand.OperandType.REGISTER, this.LHS.getRegNum()));
+                assignOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, this.RHS.getRegNum()));
+                currBlock.appendOper(assignOp);
+            } else {
+                Operation storeOp = new Operation(Operation.OperationType.STORE_I, currBlock);
+                storeOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, this.RHS.getRegNum()));
+                storeOp.setSrcOperand(1, new Operand(Operand.OperandType.STRING, this.LHS.var));
+                currBlock.appendOper(storeOp);
+            }
 
             //this.LHS.setRegNum(this.RHS.getRegNum());
             setRegNum(LHS.getRegNum());
@@ -585,8 +653,6 @@ public class CMinusParser implements Parser {
             newOper.setSrcOperand(1, new Operand(Operand.OperandType.REGISTER, this.RHS.getRegNum()));
             newOper.setDestOperand(0, new Operand(Operand.OperandType.REGISTER, this.getRegNum()));
             currBlock.appendOper(newOper);
-
-
         }
 
         void print(String parentSpace) throws IOException {
@@ -622,7 +688,6 @@ public class CMinusParser implements Parser {
                     arg.genLLCode(func);
                     Operation passOp = new Operation(Operation.OperationType.PASS, currBlock);
                     passOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, arg.getRegNum()));
-                    passOp.setDestOperand(0, new Operand(Operand.OperandType.REGISTER, this.getRegNum()));
                     passOp.addAttribute(new Attribute("PARAM_NUM", i + ""));
                     currBlock.appendOper(passOp);
                 }
@@ -630,9 +695,19 @@ public class CMinusParser implements Parser {
             }
 
             Operation callOp = new Operation(Operation.OperationType.CALL, currBlock);
+            callOp.setSrcOperand(0, new Operand(Operand.OperandType.STRING, this.LHS.var));
             callOp.addAttribute(new Attribute("numParams", args.size() + ""));
 
+            currBlock.appendOper(callOp);
 
+            int register = func.getNewRegNum();
+            Operation assignOp = new Operation(Operation.OperationType.ASSIGN, func.getCurrBlock());
+            Operand dest = new Operand(Operand.OperandType.REGISTER, register);
+            Operand src = new Operand(Operand.OperandType.MACRO, "RetReg");
+            assignOp.setDestOperand(0, dest);
+            assignOp.setSrcOperand(0, src);
+            func.getCurrBlock().appendOper(assignOp);
+            this.setRegNum(register);
         }
 
         void print(String parentSpace) throws IOException {
@@ -657,9 +732,15 @@ public class CMinusParser implements Parser {
 
         public void genLLCode(Function func){
             // note - duplicate numbers may cause problems
-            HashMap<String, Integer> localTable = func.getTable();
+            // HashMap<String, Integer> localTable = func.getTable();
             int register = func.getNewRegNum();
-            localTable.put(num + "", register);
+            // localTable.put(num + "", register);
+            Operation assignOp = new Operation(Operation.OperationType.ASSIGN, func.getCurrBlock());
+            Operand dest = new Operand(Operand.OperandType.REGISTER, register);
+            Operand src = new Operand(Operand.OperandType.INTEGER, num);
+            assignOp.setDestOperand(0, dest);
+            assignOp.setSrcOperand(0, src);
+            func.getCurrBlock().appendOper(assignOp);
             this.setRegNum(register);
         }
 
@@ -703,8 +784,8 @@ public class CMinusParser implements Parser {
                 int rNew = func.getNewRegNum();
                 register = symbolTable.get(var);
                 Operation loadOp = new Operation(Operation.OperationType.LOAD_I, currentBlock);
+                loadOp.setSrcOperand(0, new Operand(Operand.OperandType.STRING, this.var));
                 loadOp.setDestOperand(0, new Operand(Operand.OperandType.REGISTER, rNew));
-                loadOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, register));
                 currentBlock.appendOper(loadOp);
                 this.setRegNum(rNew);
             }
@@ -1446,13 +1527,3 @@ public class CMinusParser implements Parser {
         root.print();
     }
 }
-
-
-
-
-
-
-
-
-
-

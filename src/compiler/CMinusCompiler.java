@@ -123,6 +123,7 @@ public class CMinusCompiler implements Compiler {
 
             // This originally caught an IOException, but Exception is more generic
         } catch (Exception ioe) {
+            ioe.printStackTrace();
         }
 
     }
