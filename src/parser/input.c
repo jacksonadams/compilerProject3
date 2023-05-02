@@ -19,25 +19,53 @@ void printInt(int x) {
     putDigit(y);
 }
 
-int fact(int x){ 
-  if (x > 1) {
-	return x * fact(x-1);
-  }
-  else if (x < 0){
-	putchar (66);
-	putchar (65);
-	putchar (68);
-	return 0-1;
-  }
-  else {  
-	return 1;
-  }
+void checkGuess(int guess){
+	int response;
+	putchar (103);
+	putchar (117);
+	putchar (101);
+	putchar (115);
+	putchar (115);
+	putchar (61);
+	printInt(guess);
+	putchar (10);
+	response = getchar();
+	getchar();
+	if (response == 76) {
+		return 0-1;
+	}
+	else if (response == 72) {
+		return 1;
+	}
+	else {
+		return 0;
+	}
 }
 
+void binomial(void){
+	int low;
+	int high;	
+    int guess;
+	int result;
+	low = 0;
+	high = 100;
+	
+	result = 1;
+	while (result != 0){
+		guess = (low+high) / 2;
+		result = checkGuess(guess);
+		if (result > 0){
+			high = guess;
+		}
+		else if (result < 0){
+			low = guess;
+		}
+	}
+}
+
+
 int main( void )
-{ int x;
-  x = 5;
-  printInt(fact(x));
-  putchar(10);
+{ 
+  binomial();
   return 0;
 }
