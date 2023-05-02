@@ -180,9 +180,22 @@ public class CMinusParser implements Parser {
     public class Param {
         // example: int x
         public VarExpression name;
+        private int regNum;
 
         public Param(VarExpression name) {
             this.name = name;
+        }
+
+        public int getRegNum(){
+            return regNum;
+        }
+        public void setRegNum(int num){
+            regNum = num;
+        }
+
+        void genLLCode(Function func){
+            this.setRegNum(func.getNewRegNum());
+            func.getTable().put(name.var, this.getRegNum());
         }
 
         void print(String parentSpace) throws IOException {
@@ -239,26 +252,24 @@ public class CMinusParser implements Parser {
             if(params != null){
                 Param param = params.get(0);
                 firstParam = new FuncParam(Data.TYPE_INT, param.name.var);
-                FuncParam lastParam = firstParam;
-
-                // Get any remaining parameters
-                for(int i = 1; i < params.size(); i++){
-                    param = params.get(i);
-                    FuncParam nextParam = new FuncParam(Data.TYPE_INT, param.name.var);
-                    lastParam.setNextParam(nextParam);
-                    lastParam = nextParam;
-                }
             }
 
             // Get the first function
             int type = (returnType == "void") ? Data.TYPE_VOID : Data.TYPE_INT;
             Function func = new Function(type, name.var, firstParam);
-            //func.setTable(symbolTable);
 
             if(params != null){
-                HashMap<String, Integer> localTable = func.getTable();
+                FuncParam lastParam = firstParam;
+
                 for(int i = 0; i < params.size(); i ++){
-                    localTable.put(params.get(i).name.var, func.getNewRegNum());
+                    Param param = params.get(i);
+                    param.genLLCode(func);
+
+                    if(i > 0){
+                        FuncParam nextParam = new FuncParam(Data.TYPE_INT, param.name.var);
+                        lastParam.setNextParam(nextParam);
+                        lastParam = nextParam;
+                    }
                 }
             }
 
@@ -266,6 +277,8 @@ public class CMinusParser implements Parser {
             func.setCurrBlock(func.getFirstBlock());
 
             this.content.genLLCode(func);
+
+
 
             return func;
         }
@@ -289,6 +302,14 @@ public class CMinusParser implements Parser {
         // abstract, will be one of the other 5 statements
         abstract void print(String parentSpace) throws IOException;
         abstract void genLLCode(Function func) throws Exception;
+
+        private int regNum;
+        public void setRegNum(int num){
+            regNum = num;
+        }
+        public int getRegNum(){
+            return regNum;
+        }
     }
 
     public class ExpressionStmt extends Statement {
@@ -361,11 +382,21 @@ public class CMinusParser implements Parser {
         }
 
         public void genLLCode(Function func) throws Exception{
+            BasicBlock currBlock = func.getCurrBlock();
+
             this.condition.genLLCode(func);
+
+            // Determine condition
+            Operation branchEqualOp = new Operation(Operation.OperationType.BEQ, currBlock);
+            branchEqualOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, this.condition.getRegNum()));
+            // branchEqualOp.setDestOperand(0, new Operand(Operand.OperandType.BLOCK, ))
+
+            // If the condition's register == 0, it's false so skip next block
+
+            //branchEqualOp.setSrcOperand()
+
             this.ifSequence.genLLCode(func);
-            if(this.elseSequence != null){
-                this.elseSequence.genLLCode(func);
-            }
+            this.elseSequence.genLLCode(func);
         }
 
         void print(String parentSpace) throws IOException {
@@ -413,8 +444,21 @@ public class CMinusParser implements Parser {
             this.LHS = LHS;
         }
 
-        public void genLLCode(Function func){
-            
+        public void genLLCode(Function func) throws Exception {
+            BasicBlock currBlock = func.getCurrBlock();
+
+            if(LHS != null){
+                LHS.genLLCode(func);
+                Operation returnOp = new Operation(Operation.OperationType.RETURN, currBlock);
+                returnOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, LHS.getRegNum()));
+                returnOp.setDestOperand(0, new Operand(Operand.OperandType.REGISTER, this.getRegNum()));
+                currBlock.appendOper(returnOp);
+            }
+
+            Operation jumpOp = new Operation(Operation.OperationType.JMP, currBlock);
+            jumpOp.setSrcOperand(0, new Operand(Operand.OperandType.BLOCK, currBlock.getBlockNum()));
+            jumpOp.setDestOperand(0, new Operand(Operand.OperandType.BLOCK, func.getReturnBlock().getBlockNum()));
+            currBlock.appendOper(jumpOp);
         }
 
         void print(String parentSpace) throws IOException {
@@ -460,7 +504,6 @@ public class CMinusParser implements Parser {
             // annotate with R3
             // COME BACK TO THIS bc it's basically just turning the LHS into a pointer
             this.LHS.genLLCode(func);
-            // <- add something here?
             this.RHS.genLLCode(func);
 
             // Add assign operation
@@ -564,9 +607,31 @@ public class CMinusParser implements Parser {
             this.args = args;
         }
 
-        public void genLLCode(Function func){
+        public void genLLCode(Function func) throws Exception {
             // pass, pass, rNew = retReg
             // retReg holds return value, register number of call expression
+
+            // Get current block
+            BasicBlock currBlock = func.getCurrBlock();
+
+            // Generate code on each argument
+            if(args != null){
+                for(int i = 0; i < args.size(); i ++){
+                    Expression arg = args.get(i);
+
+                    arg.genLLCode(func);
+                    Operation passOp = new Operation(Operation.OperationType.PASS, currBlock);
+                    passOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, arg.getRegNum()));
+                    passOp.setDestOperand(0, new Operand(Operand.OperandType.REGISTER, this.getRegNum()));
+                    passOp.addAttribute(new Attribute("PARAM_NUM", i + ""));
+                    currBlock.appendOper(passOp);
+                }
+
+            }
+
+            Operation callOp = new Operation(Operation.OperationType.CALL, currBlock);
+            callOp.addAttribute(new Attribute("numParams", args.size() + ""));
+
 
         }
 
@@ -635,10 +700,13 @@ public class CMinusParser implements Parser {
                 register = localTable.get(var);
                 this.setRegNum(register);
             } else {
+                int rNew = func.getNewRegNum();
                 register = symbolTable.get(var);
                 Operation loadOp = new Operation(Operation.OperationType.LOAD_I, currentBlock);
+                loadOp.setDestOperand(0, new Operand(Operand.OperandType.REGISTER, rNew));
+                loadOp.setSrcOperand(0, new Operand(Operand.OperandType.REGISTER, register));
                 currentBlock.appendOper(loadOp);
-                this.setRegNum(register);
+                this.setRegNum(rNew);
             }
 
             // throw error if variable doesn't exist
@@ -1012,7 +1080,6 @@ public class CMinusParser implements Parser {
 
         return IS;
     }
-
     private ReturnStmt parseReturnStmt() throws Exception {
         /* return-stmt → return [expression] ;
          * First(return-stmt) → { return }
@@ -1375,7 +1442,6 @@ public class CMinusParser implements Parser {
         outputFile = file;
         program.print();
     }
-
     public void printAST(Program root) throws IOException{
         root.print();
     }

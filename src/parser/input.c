@@ -1,5 +1,5 @@
-int addThem(int y) {
-    int x;
+int addThem(int a, int b) {
+    a = 2 > 5;
 
-    x = 3 + 5 + 4;
+    return a;
 }
